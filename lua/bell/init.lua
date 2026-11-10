@@ -2,11 +2,13 @@
 -- lua/bell/init.lua
 -- Modulo principal do plugin bell.nvim
 -- Baixa e compila 'bellc' a partir do GitHub em stdpath("data")/bell.nvim
+-- Aplica Syntax Highlighting (Extmarks) e Diagnosticos (Lexico/Sintatico/Semantico)
 -- ==========================================================================
 
 local M = {}
 
 local ns_id = vim.api.nvim_create_namespace("bell_syntax_highlight")
+local diag_ns = vim.api.nvim_create_namespace("bell_diagnostics")
 local data_dir = vim.fn.stdpath("data") .. "/bell.nvim"
 local src_dir = data_dir .. "/src"
 local default_bin = src_dir .. "/bellc"
@@ -16,6 +18,7 @@ M.config = {
     branch = "main",
     bin = default_bin,
     auto_install = true,
+    diagnostics = true,
     highlights = {
         TIPO              = "Type",
         PALAVRA_RESERVADA = "Keyword",
@@ -81,6 +84,36 @@ function M.install_compiler(callback)
     })
 end
 
+-- Executa a analise completa do 'bellc' e publica erros no vim.diagnostic do Neovim
+function M.check_diagnostics(bufnr, codigo_fonte)
+    if not M.config.diagnostics then
+        vim.diagnostic.reset(diag_ns, bufnr)
+        return
+    end
+
+    local relatorio = vim.fn.system({ M.config.bin }, codigo_fonte)
+    local diagnosticos = {}
+
+    for linha_rel in relatorio:gmatch("[^\r\n]+") do
+        -- Padrao emitido pelo bellc: [bell - ERRO <NATUREZA>] linha <N>: <MENSAGEM>
+        local natureza, lin, msg =
+            linha_rel:match("%[%S+%s+%-%s+ERRO%s+(%S+)%]%s+linha%s+(%d+):%s+(.+)")
+
+        if natureza and lin and msg then
+            local l = math.max(0, tonumber(lin) - 1)
+            table.insert(diagnosticos, {
+                lnum = l,
+                col = 0,
+                severity = vim.diagnostic.severity.ERROR,
+                source = "bellc (" .. natureza .. ")",
+                message = msg,
+            })
+        end
+    end
+
+    vim.diagnostic.set(diag_ns, bufnr, diagnosticos)
+end
+
 function M.highlight(bufnr)
     bufnr = bufnr or vim.api.nvim_get_current_buf()
     if not vim.api.nvim_buf_is_valid(bufnr) then
@@ -104,32 +137,32 @@ function M.highlight(bufnr)
     local linhas = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
     local codigo_fonte = table.concat(linhas, "\n") .. "\n"
 
-    -- 3. Executa 'bellc --tokens'
+    -- 3. Executa 'bellc --tokens' para aplicar as cores
     local saida = vim.fn.system({ M.config.bin, "--tokens" }, codigo_fonte)
-    if vim.v.shell_error ~= 0 then
-        return
-    end
+    if vim.v.shell_error == 0 then
+        for linha_saida in saida:gmatch("[^\r\n]+") do
+            local lin, col_ini, col_fim, categoria =
+                linha_saida:match("^(%d+)%s+(%d+)%s+(%d+)%s+(%S+)")
 
-    -- 4. Lê cada linha '<linha> <col_ini> <col_fim> <categoria> <lexema>'
-    for linha_saida in saida:gmatch("[^\r\n]+") do
-        local lin, col_ini, col_fim, categoria =
-            linha_saida:match("^(%d+)%s+(%d+)%s+(%d+)%s+(%S+)")
+            if lin and col_ini and col_fim and categoria then
+                local hl_group = M.config.highlights[categoria]
+                if hl_group then
+                    local l = tonumber(lin) - 1
+                    local c_ini = tonumber(col_ini) - 1
+                    local c_fim = tonumber(col_fim)
 
-        if lin and col_ini and col_fim and categoria then
-            local hl_group = M.config.highlights[categoria]
-            if hl_group then
-                local l = tonumber(lin) - 1
-                local c_ini = tonumber(col_ini) - 1
-                local c_fim = tonumber(col_fim)
-
-                pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_id, l, c_ini, {
-                    end_row = l,
-                    end_col = c_fim,
-                    hl_group = hl_group,
-                })
+                    pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_id, l, c_ini, {
+                        end_row = l,
+                        end_col = c_fim,
+                        hl_group = hl_group,
+                    })
+                end
             end
         end
     end
+
+    -- 4. Executa 'bellc' para verificar erros lexicos, sintaticos e semanticos
+    M.check_diagnostics(bufnr, codigo_fonte)
 end
 
 function M.setup(opts)

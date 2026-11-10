@@ -75,4 +75,8 @@ make uninstall
 
 ![Syntax Highlighting 1](./docs/highlight_1.png)
 
-![Syntax Highlighting 2](./docs/highlight_2.png)
+![Error Syntax Highlighting 1](./docs/highlight_error_1.png)
+
+![Error Syntax Highlighting 2](./docs/highlight_error_2.png)
+
+![Error Syntax Highlighting 3](./docs/highlight_error_3.png)
