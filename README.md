@@ -68,3 +68,11 @@ make uninstall
 
 - `:BellUpdate` — Faz `git pull` do compilador no GitHub (`bell-lang`) e recompila o binário `bellc`.
 - `:BellHighlight` — Força a aplicação de cores no buffer aberto atual.
+
+---
+
+## Screenshots
+
+![Syntax Highlighting 1](./docs/highlight_1.png)
+
+![Syntax Highlighting 2](./docs/highlight_2.png)
